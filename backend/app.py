@@ -113,8 +113,30 @@ def build_prompt(num_cards, source, is_notes, difficulty, style, language):
     )
 
 
+def _extract_objects(output):
+    """Pull individual {...} card objects out of messy or truncated model output."""
+    decoder = json.JSONDecoder()
+    cards, i = [], 0
+    while True:
+        i = output.find("{", i)
+        if i == -1:
+            return cards
+        try:
+            obj, end = decoder.raw_decode(output, i)
+        except ValueError:
+            i += 1
+            continue
+        items = [obj]
+        if isinstance(obj, dict):
+            for key in ("flashcards", "cards"):
+                if isinstance(obj.get(key), list):
+                    items = obj[key]
+        cards.extend(c for c in map(_clean_card, items) if c)
+        i = end
+
+
 def parse_flashcards(output, num_cards):
-    """Parse model output into cards: JSON array first, then 'Q: ... A: ...' text."""
+    """Parse model output into cards: JSON array, then loose JSON objects, then 'Q: ... A: ...' text."""
     if not output:
         return []
 
@@ -127,6 +149,9 @@ def parse_flashcards(output, num_cards):
                 cards = [c for c in map(_clean_card, data) if c]
         except ValueError:
             pass
+
+    if not cards:
+        cards = _extract_objects(output)
 
     if not cards:
         pattern = re.compile(
@@ -196,11 +221,15 @@ def api_flashcards():
     source = (text or topic)[:MAX_INPUT_CHARS]
     prompt = build_prompt(num_cards, source, bool(text), difficulty, style, language)
 
-    output, error = query_llm(prompt)
-    if not error:
+    error = None
+    for attempt in (1, 2):
+        output, error = query_llm(prompt)
+        if error:
+            break
         cards = parse_flashcards(output, num_cards)
         if cards:
             return jsonify({"flashcards": cards, "source": "ai"}), 200
+        logger.warning("Attempt %s: unusable model output: %r", attempt, (output or "")[:300])
         error = "The model returned no usable flashcards."
 
     logger.warning("Generation failed (%s); using fallback.", error)
