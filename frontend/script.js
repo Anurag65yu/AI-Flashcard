@@ -28,6 +28,7 @@ const els = {
   modelBadge: $("modelBadge"), modelText: $("modelText"),
   dialog: $("decksDialog"), deckList: $("deckList"), noDecks: $("noDecks"), deckCount: $("deckCount"),
   toast: $("toast"),
+  file: $("file"), drop: $("drop"), dropHint: $("dropHint"), fileChip: $("fileChip"), fileName: $("fileName"),
 };
 
 const state = { cards: [], title: "", view: "grid", queue: [], pos: 0 };
@@ -245,7 +246,7 @@ async function generate(event) {
       hint: typeof c.hint === "string" ? c.hint : "",
     }));
     const firstLine = raw.split("\n")[0].trim();
-    state.title = isNotes ? `Notes: ${firstLine.slice(0, 32)}${firstLine.length > 32 ? "…" : ""}` : firstLine.slice(0, 56);
+    state.title = upload.name && raw === upload.text.trim() ? `File: ${upload.name.slice(0, 44)}` : isNotes ? `Notes: ${firstLine.slice(0, 32)}${firstLine.length > 32 ? "…" : ""}` : firstLine.slice(0, 56);
     render();
 
     if (data.warning) {
@@ -253,7 +254,7 @@ async function generate(event) {
     } else {
       setStatus(`${state.cards.length} cards ready · ${payload.difficulty} · ${payload.language}`, "ok");
     }
-    if (window.innerWidth <= 980) els.empty.closest(".deck").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (window.innerWidth <= 980) els.empty.closest(".stage").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     console.error("Error generating flashcards:", error);
     setStatus(`Could not reach the backend at ${API_URL || location.origin}. Is it running?`, "error");
@@ -393,6 +394,152 @@ async function checkHealth() {
   }
 }
 
+// ---------- photo / pdf upload (extraction runs in the browser, the file never leaves the device) ----------
+const MAX_FILE_BYTES = 15 * 1024 * 1024;
+const MAX_PDF_PAGES = 30;
+const MAX_OCR_PAGES = 5;
+const MIN_PDF_TEXT = 80;
+const LIBS = {
+  pdf: {
+    url: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
+    sri: "sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e",
+    worker: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js",
+  },
+  ocr: {
+    url: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js",
+    sri: "sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F",
+  },
+};
+const upload = { name: "", text: "", token: 0 };
+const loaded = {};
+
+function loadLib(key) {
+  if (!loaded[key]) {
+    const lib = LIBS[key];
+    loaded[key] = new Promise((resolve, reject) => {
+      const tag = h("script", { src: lib.url, integrity: lib.sri, crossorigin: "anonymous" });
+      tag.onload = resolve;
+      tag.onerror = () => { delete loaded[key]; reject(new Error("Could not load the reader library (are you online?)")); };
+      document.head.append(tag);
+    });
+  }
+  return loaded[key];
+}
+
+async function ocrImages(sources, progress) {
+  await loadLib("ocr");
+  let index = 0;
+  const worker = await window.Tesseract.createWorker("eng", 1, {
+    logger: (m) => { if (m.status === "recognizing text") progress(index, sources.length, m.progress); },
+  });
+  try {
+    const parts = [];
+    for (; index < sources.length; index++) {
+      const { data } = await worker.recognize(sources[index]);
+      parts.push(data.text);
+    }
+    return parts.join("\n\n");
+  } finally {
+    await worker.terminate();
+  }
+}
+
+async function readPdf(file, progress) {
+  await loadLib("pdf");
+  const pdfjs = window.pdfjsLib;
+  pdfjs.GlobalWorkerOptions.workerSrc = LIBS.pdf.worker;
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  try {
+    const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
+    let text = "";
+    for (let i = 1; i <= pages; i++) {
+      progress(`Reading page ${i} / ${pages}`);
+      const content = await (await doc.getPage(i)).getTextContent();
+      text += `${content.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join("")}\n\n`;
+    }
+    if (text.replace(/\s/g, "").length >= MIN_PDF_TEXT) return { text, note: doc.numPages > pages ? `first ${pages} of ${doc.numPages} pages` : "" };
+
+    const ocrPages = Math.min(doc.numPages, MAX_OCR_PAGES);
+    const canvases = [];
+    for (let i = 1; i <= ocrPages; i++) {
+      progress(`Scanned pdf, preparing page ${i} / ${ocrPages}`);
+      const page = await doc.getPage(i);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = h("canvas", { width: String(Math.floor(viewport.width)), height: String(Math.floor(viewport.height)) });
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      canvases.push(canvas);
+    }
+    const ocr = await ocrImages(canvases, (n, total, p) => progress(`Reading scanned page ${n + 1} / ${total} (${Math.round(p * 100)}%)`));
+    return { text: ocr, note: `OCR on first ${ocrPages} page${ocrPages > 1 ? "s" : ""}` };
+  } finally {
+    doc.destroy();
+  }
+}
+
+async function readImage(file, progress) {
+  progress("Loading text reader...");
+  const text = await ocrImages([file], (n, total, p) => progress(`Reading text from photo (${Math.round(p * 100)}%)`));
+  return { text, note: "OCR" };
+}
+
+function tidyText(text) {
+  return text.replace(/\r/g, "").replace(/[ \t ]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function clearUpload() {
+  upload.token += 1;
+  upload.name = "";
+  upload.text = "";
+  els.fileChip.hidden = true;
+  els.file.value = "";
+  els.drop.classList.remove("busy");
+  els.submit.disabled = false;
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  const isImage = /^image\/(png|jpe?g|webp|bmp)$/.test(file.type);
+  if (!isPdf && !isImage) return setStatus("Please choose a PDF or a PNG, JPG, WebP or BMP photo.", "error");
+  if (file.size > MAX_FILE_BYTES) return setStatus("That file is over 15 MB. Try a smaller one.", "error");
+
+  const token = ++upload.token;
+  els.drop.classList.add("busy");
+  els.submit.disabled = true;
+  els.fileChip.hidden = true;
+  const progress = (msg) => { if (token === upload.token) setStatus(msg); };
+
+  try {
+    const { text, note } = isPdf ? await readPdf(file, progress) : await readImage(file, progress);
+    if (token !== upload.token) return;
+    let clean = tidyText(text);
+    if (clean.replace(/\s/g, "").length < 20) {
+      setStatus("No readable text found in that file. Try a sharper photo or a text-based PDF.", "error");
+      return;
+    }
+    const max = els.input.maxLength;
+    const cut = clean.length > max;
+    if (cut) clean = clean.slice(0, max);
+
+    els.input.value = clean;
+    els.input.dispatchEvent(new Event("input"));
+    upload.name = file.name;
+    upload.text = clean;
+    els.fileName.textContent = `${file.name} · ${clean.length} chars${note ? ` · ${note}` : ""}`;
+    els.fileChip.hidden = false;
+    setStatus(cut ? `Text extracted and trimmed to ${max} characters. Edit it if you like, then generate.` : "Text extracted. Edit it if you like, then generate.", "ok");
+  } catch (error) {
+    console.error("File read failed:", error);
+    if (token === upload.token) setStatus(`Could not read that file: ${error.message || "unknown error"}`, "error");
+  } finally {
+    if (token === upload.token) {
+      els.drop.classList.remove("busy");
+      els.submit.disabled = false;
+      els.file.value = "";
+    }
+  }
+}
+
 // ---------- wiring ----------
 EXAMPLES.forEach((topic) => {
   els.examples.append(h("button", {
@@ -413,6 +560,13 @@ els.input.addEventListener("keydown", (e) => {
 });
 els.count.addEventListener("input", () => { els.countOut.textContent = els.count.value; });
 els.form.addEventListener("submit", generate);
+
+els.file.addEventListener("change", () => handleFile(els.file.files[0]));
+$("fileClear").addEventListener("click", () => { clearUpload(); setStatus(""); });
+["dragenter", "dragover"].forEach((t) => els.drop.addEventListener(t, (e) => { e.preventDefault(); els.drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => els.drop.addEventListener(t, () => els.drop.classList.remove("over")));
+els.drop.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
+["dragover", "drop"].forEach((t) => window.addEventListener(t, (e) => e.preventDefault()));
 
 document.querySelectorAll('input[name="view"]').forEach((r) =>
   r.addEventListener("change", () => {

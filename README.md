@@ -1,9 +1,10 @@
 # AI Flashcards
 
-Type a topic or paste notes and get study flashcards. A Flask backend calls a Hugging Face instruct model; the frontend is plain HTML/CSS/JS with a dark, glassy "AI studio" look.
+Type a topic, paste notes, or upload a PDF or photo and get study flashcards. A Flask backend calls a Hugging Face instruct model; the frontend is plain HTML/CSS/JS with a light, grid-paper look (bracket labels, pill inputs, pastel blue and orange accents).
 
 ## Features
 
+- **Photo / PDF upload**: drop a PDF or a PNG/JPG/WebP/BMP photo and the text is read in your browser, put into the editable box, then turned into cards. Text PDFs are read directly (first 30 pages). Scanned PDFs and photos use OCR (first 5 pages, English only). Max 15 MB, text is trimmed to 6000 characters. The file itself is never sent to the server; only the extracted text is, like any pasted notes.
 - **Options**: difficulty (easy / medium / hard), card style (Q&A, fill in the blank, definition, mixed), output language (English, Hindi, Spanish, French, German, Portuguese, Japanese) and 3-20 cards.
 - **Hints**: every card can carry a short hint, blurred until you hover or focus it.
 - **Grid or Study view**: study mode tracks "Got it" / "Still learning", then offers "Review missed" or "Study again".
@@ -49,3 +50,7 @@ Check the backend with `curl http://127.0.0.1:5000/api/health`.
 | `HF_MODEL` | `meta-llama/Llama-3.1-8B-Instruct` |
 | `PORT` | `5000` |
 | `FLASK_DEBUG` | `0` |
+
+## Upload notes
+
+The readers (pdf.js and Tesseract.js) are loaded on demand from jsDelivr with pinned versions and SRI hashes, so you need internet access the first time you upload. OCR also downloads its English language data and a WebAssembly core from a CDN; those are fetched by the library and cannot be SRI-pinned. To avoid third-party CDNs entirely, self-host the files and change `LIBS` in `frontend/script.js`.
