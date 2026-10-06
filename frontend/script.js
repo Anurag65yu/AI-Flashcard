@@ -244,7 +244,8 @@ async function generate(event) {
       answer: String(c.answer),
       hint: typeof c.hint === "string" ? c.hint : "",
     }));
-    state.title = raw.split("\n")[0].slice(0, 56);
+    const firstLine = raw.split("\n")[0].trim();
+    state.title = isNotes ? `Notes: ${firstLine.slice(0, 32)}${firstLine.length > 32 ? "…" : ""}` : firstLine.slice(0, 56);
     render();
 
     if (data.warning) {
