@@ -3,29 +3,127 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Flashcard Generator</title>
+  <title>AI Flashcards</title>
+  <meta name="theme-color" content="#05060c">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="container">
-    <h1>AI Flashcard Generator</h1>
-    <p class="subtitle">Enter a topic, or paste your notes. Click a card to flip it.</p>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 
-    <form id="form">
-      <label for="input" class="sr-only">Topic or notes</label>
-      <textarea id="input" placeholder="Enter a topic or paste text..." required></textarea>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><path fill="url(#lg)" d="M12 1.5l2.2 6.3 6.3 2.2-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-2.2zM19 14l1 2.9 2.9 1-2.9 1-1 2.9-1-2.9-2.9-1 2.9-1z"/></svg>
+      <span>AI Flashcards</span>
+    </a>
+    <div class="top-actions">
+      <span class="badge mono" id="modelBadge" data-state="checking"><i></i><span id="modelText">connecting</span></span>
+      <button type="button" class="btn" id="decksBtn">Saved decks <b id="deckCount">0</b></button>
+    </div>
+  </header>
 
-      <div class="row">
-        <label for="count">Cards</label>
-        <input id="count" type="number" min="1" max="20" value="5">
-        <button type="submit" id="submit">Generate Flashcards</button>
+  <main class="layout">
+    <section class="panel compose" aria-labelledby="title">
+      <p class="eyebrow mono">Study studio</p>
+      <h1 id="title">Turn anything into <em>flashcards</em>.</h1>
+      <p class="lede">Type a topic or paste your notes. The model writes the cards, you pick how hard they are and how they look.</p>
+
+      <form id="form" novalidate>
+        <div class="glow-field">
+          <label for="input" class="sr-only">Topic or notes</label>
+          <textarea id="input" placeholder="Try: how does the immune system work?  Or paste a page of notes..." maxlength="6000"></textarea>
+          <span class="count mono" id="charCount">0 / 6000</span>
+        </div>
+
+        <div class="examples" id="examples" aria-label="Example topics"></div>
+
+        <fieldset>
+          <legend class="mono">Difficulty</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="difficulty" value="easy"><span>Easy</span></label>
+            <label><input type="radio" name="difficulty" value="medium" checked><span>Medium</span></label>
+            <label><input type="radio" name="difficulty" value="hard"><span>Hard</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend class="mono">Card style</legend>
+          <div class="seg seg-4" role="radiogroup">
+            <label><input type="radio" name="style" value="qa" checked><span>Q&amp;A</span></label>
+            <label><input type="radio" name="style" value="cloze"><span>Fill blank</span></label>
+            <label><input type="radio" name="style" value="definition"><span>Define</span></label>
+            <label><input type="radio" name="style" value="mixed"><span>Mixed</span></label>
+          </div>
+        </fieldset>
+
+        <div class="two">
+          <div>
+            <label class="mono lbl" for="language">Language</label>
+            <select id="language">
+              <option>English</option><option>Hindi</option><option>Spanish</option><option>French</option>
+              <option>German</option><option>Portuguese</option><option>Japanese</option>
+            </select>
+          </div>
+          <div>
+            <label class="mono lbl" for="count">Cards <output id="countOut">8</output></label>
+            <input id="count" type="range" min="3" max="20" value="8">
+          </div>
+        </div>
+
+        <button type="submit" class="cta" id="submit"><span>Generate flashcards</span><kbd class="mono">Ctrl + Enter</kbd></button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="deck" aria-label="Your deck">
+      <div class="empty" id="empty">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.5l2.2 6.3 6.3 2.2-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-2.2z"/></svg>
+        <h2>Your deck will appear here</h2>
+        <p>Pick a topic on the left, or tap one of the examples to start.</p>
       </div>
-    </form>
 
-    <p id="status" role="status" aria-live="polite"></p>
-    <div id="flashcards"></div>
+      <div class="toolbar" id="toolbar" hidden>
+        <div class="deck-title"><span class="mono" id="deckMeta"></span><strong id="deckName"></strong></div>
+        <div class="tools">
+          <div class="seg seg-sm" role="radiogroup" aria-label="View">
+            <label><input type="radio" name="view" value="grid" checked><span>Grid</span></label>
+            <label><input type="radio" name="view" value="study"><span>Study</span></label>
+          </div>
+          <button type="button" class="btn" id="shuffleBtn">Shuffle</button>
+          <button type="button" class="btn" id="flipAllBtn">Flip all</button>
+          <button type="button" class="btn" id="saveBtn">Save</button>
+          <button type="button" class="btn" id="csvBtn">CSV</button>
+          <button type="button" class="btn" id="jsonBtn">JSON</button>
+          <button type="button" class="btn" id="copyBtn">Copy</button>
+        </div>
+      </div>
+
+      <div id="flashcards" class="grid"></div>
+
+      <div id="study" class="study" hidden>
+        <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+        <p class="mono study-meta"><span id="studyPos"></span><span id="studyScore"></span></p>
+        <div id="studyCard"></div>
+        <div class="study-actions">
+          <button type="button" class="btn" id="prevBtn" aria-label="Previous card">Back</button>
+          <button type="button" class="btn miss" id="missBtn">Still learning <kbd class="mono">1</kbd></button>
+          <button type="button" class="btn hit" id="hitBtn">Got it <kbd class="mono">2</kbd></button>
+          <button type="button" class="btn" id="nextBtn" aria-label="Next card">Next</button>
+        </div>
+        <p class="mono keys">Space flips &middot; arrow keys move &middot; 1 / 2 grade the card</p>
+      </div>
+    </section>
   </main>
 
+  <dialog id="decksDialog">
+    <div class="dlg-head"><h2>Saved decks</h2><button type="button" class="btn" id="closeDecks">Close</button></div>
+    <ul id="deckList" class="deck-list"></ul>
+    <p class="mono muted" id="noDecks">Nothing saved yet. Generate a deck and press Save.</p>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="script.js"></script>
 </body>
 </html>

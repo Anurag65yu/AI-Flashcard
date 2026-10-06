@@ -18,6 +18,22 @@ DEFAULT_CARDS = 5
 MAX_CARDS = 20
 MAX_INPUT_CHARS = 6000
 
+DIFFICULTIES = {
+    "easy": "Beginner level: core facts and definitions only.",
+    "medium": "Intermediate level: focus on understanding and how ideas relate.",
+    "hard": "Advanced level: nuance, application and edge cases.",
+}
+STYLES = {
+    "qa": "Standard question with a short answer.",
+    "cloze": (
+        "Fill-in-the-blank: each question is one sentence with ____ where a key term is missing; "
+        "the answer is the missing term plus a few words of clarification."
+    ),
+    "definition": "Each question names a term or concept; the answer defines it clearly.",
+    "mixed": "A varied mix of question-and-answer, fill-in-the-blank (use ____) and definition cards.",
+}
+LANGUAGES = ["English", "Hindi", "Spanish", "French", "German", "Portuguese", "Japanese"]
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-flashcards-backend")
 
@@ -29,12 +45,13 @@ CORS(app)
 
 SYSTEM_PROMPT = (
     "You write concise study flashcards. Reply with ONLY a JSON array, no prose and "
-    'no code fences. Each item must be an object: {"question": "...", "answer": "..."}. '
-    "Questions must be self-contained. Answers must be 1-2 short sentences."
+    'no code fences. Each item must be an object: {"question": "...", "answer": "...", "hint": "..."}. '
+    "Questions must be self-contained. Answers must be 1-2 short sentences. "
+    "The hint is a short nudge of at most 8 words that does not reveal the answer."
 )
 
 
-def query_llm(user_prompt, timeout=45):
+def query_llm(user_prompt, timeout=60):
     """Call the Hugging Face chat-completions router. Returns (text, error)."""
     if not HF_API_KEY:
         return None, "Hugging Face API key not configured (set HF_API_KEY in backend/.env)."
@@ -45,7 +62,7 @@ def query_llm(user_prompt, timeout=45):
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        "max_tokens": 1800,
+        "max_tokens": 3000,
         "temperature": 0.3,
     }
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
@@ -77,7 +94,23 @@ def _clean_card(item):
     q, a = q.strip(), a.strip()
     if not q or not a:
         return None
-    return {"question": q[:300], "answer": a[:800]}
+    hint = item.get("hint")
+    hint = hint.strip()[:160] if isinstance(hint, str) else ""
+    return {"question": q[:300], "answer": a[:800], "hint": hint}
+
+
+def build_prompt(num_cards, source, is_notes, difficulty, style, language):
+    intro = (
+        f"Create {num_cards} flashcards from these notes:\n\n{source}"
+        if is_notes
+        else f"Create {num_cards} flashcards that teach the key facts about: {source}"
+    )
+    return (
+        f"{intro}\n\n"
+        f"Difficulty: {DIFFICULTIES[difficulty]}\n"
+        f"Card style: {STYLES[style]}\n"
+        f"Write every question, answer and hint in {language}."
+    )
 
 
 def parse_flashcards(output, num_cards):
@@ -119,7 +152,7 @@ def fallback_flashcards(text, num_cards):
         if len(s) <= 20 or len(words) < 4:
             continue
         lead = " ".join(words[:6]) + ("..." if len(words) > 6 else "")
-        cards.append({"question": f"Complete the idea: {lead}", "answer": s[:800]})
+        cards.append({"question": f"Complete the idea: {lead}", "answer": s[:800], "hint": ""})
         if len(cards) >= num_cards:
             break
     return cards
@@ -150,12 +183,18 @@ def api_flashcards():
     if not topic and not text:
         return jsonify({"error": "No input provided; supply 'topic' or 'text'."}), 400
 
-    if text:
-        source = text[:MAX_INPUT_CHARS]
-        prompt = f"Create {num_cards} flashcards from these notes:\n\n{source}"
-    else:
-        source = topic[:MAX_INPUT_CHARS]
-        prompt = f"Create {num_cards} flashcards that teach the key facts about: {source}"
+    difficulty = str(data.get("difficulty") or "medium").lower()
+    style = str(data.get("style") or "qa").lower()
+    language = str(data.get("language") or "English")
+    if difficulty not in DIFFICULTIES:
+        return jsonify({"error": f"difficulty must be one of: {', '.join(DIFFICULTIES)}."}), 400
+    if style not in STYLES:
+        return jsonify({"error": f"style must be one of: {', '.join(STYLES)}."}), 400
+    if language not in LANGUAGES:
+        return jsonify({"error": f"language must be one of: {', '.join(LANGUAGES)}."}), 400
+
+    source = (text or topic)[:MAX_INPUT_CHARS]
+    prompt = build_prompt(num_cards, source, bool(text), difficulty, style, language)
 
     output, error = query_llm(prompt)
     if not error:
