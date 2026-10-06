@@ -1,4 +1,6 @@
-const API_URL = window.API_URL || "http://127.0.0.1:5000";
+// Same-origin when served by Flask (http://127.0.0.1:5000); otherwise assume the backend runs locally.
+const servedByBackend = location.protocol.startsWith("http") && location.port === "5000";
+const API_URL = window.API_URL || (servedByBackend ? "" : "http://127.0.0.1:5000");
 
 // Input longer than this, or spanning several lines, is treated as pasted notes rather than a topic.
 const NOTES_MIN_CHARS = 120;
@@ -96,7 +98,7 @@ async function generateFlashcards(event) {
     );
   } catch (error) {
     console.error("Error generating flashcards:", error);
-    setStatus(`Could not reach the backend at ${API_URL}. Is it running?`, true);
+    setStatus(`Could not reach the backend at ${API_URL || location.origin}. Is it running?`, true);
   } finally {
     submit.disabled = false;
     submit.textContent = "Generate Flashcards";

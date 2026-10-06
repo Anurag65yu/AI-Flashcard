@@ -5,7 +5,7 @@ import re
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 load_dotenv()
@@ -21,7 +21,10 @@ MAX_INPUT_CHARS = 6000
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-flashcards-backend")
 
-app = Flask(__name__)
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+
+# Serving the frontend from Flask means one command runs the whole app.
+app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 CORS(app)
 
 SYSTEM_PROMPT = (
@@ -120,6 +123,11 @@ def fallback_flashcards(text, num_cards):
         if len(cards) >= num_cards:
             break
     return cards
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return send_from_directory(FRONTEND_DIR, "index.html")
 
 
 @app.route("/api/health", methods=["GET"])

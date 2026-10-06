@@ -11,15 +11,13 @@ cd backend
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env                                  # then put your HF token in .env
-python app.py                                         # http://127.0.0.1:5000
+python app.py
 ```
 
-Frontend (in a second terminal):
+Then open **http://127.0.0.1:5000**. Flask serves the frontend too, so there is only one server to run.
+(You can still host `frontend/` separately, for example `python -m http.server 8000`; it will call the backend at `http://127.0.0.1:5000`.)
 
-```bash
-cd frontend
-python -m http.server 8000                            # open http://127.0.0.1:8000
-```
+Never commit `backend/.env` or paste your token into code or the README. It is gitignored for that reason.
 
 Check the backend with `curl http://127.0.0.1:5000/api/health`.
 
