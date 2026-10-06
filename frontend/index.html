@@ -4,88 +4,59 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Flashcards</title>
-  <meta name="theme-color" content="#05060c">
+  <meta name="theme-color" content="#8fb8d8">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="topband" aria-hidden="true"></div>
 
-  <header class="topbar">
+  <header class="nav">
     <a class="brand" href="/">
-      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><path fill="url(#lg)" d="M12 1.5l2.2 6.3 6.3 2.2-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-2.2zM19 14l1 2.9 2.9 1-2.9 1-1 2.9-1-2.9-2.9-1 2.9-1z"/></svg>
-      <span>AI Flashcards</span>
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.5l2.2 6.3 6.3 2.2-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-2.2zM19 14l1 2.9 2.9 1-2.9 1-1 2.9-1-2.9-2.9-1 2.9-1z"/></svg>
+      <span>flashcards</span>
     </a>
-    <div class="top-actions">
-      <span class="badge mono" id="modelBadge" data-state="checking"><i></i><span id="modelText">connecting</span></span>
-      <button type="button" class="btn" id="decksBtn">Saved decks <b id="deckCount">0</b></button>
-    </div>
+    <nav class="links" aria-label="Main">
+      <span class="status" id="modelBadge" data-state="checking"><i></i><span id="modelText">connecting</span></span>
+      <button type="button" class="link" id="decksBtn">saved decks<b id="deckCount">0</b></button>
+    </nav>
   </header>
 
   <main class="layout">
-    <section class="panel compose" aria-labelledby="title">
-      <p class="eyebrow mono">Study studio</p>
-      <h1 id="title">Turn anything into <em>flashcards</em>.</h1>
-      <p class="lede">Type a topic or paste your notes. The model writes the cards, you pick how hard they are and how they look.</p>
-
-      <form id="form" novalidate>
-        <div class="glow-field">
-          <label for="input" class="sr-only">Topic or notes</label>
-          <textarea id="input" placeholder="Try: how does the immune system work?  Or paste a page of notes..." maxlength="6000"></textarea>
-          <span class="count mono" id="charCount">0 / 6000</span>
-        </div>
-
-        <div class="examples" id="examples" aria-label="Example topics"></div>
-
-        <fieldset>
-          <legend class="mono">Difficulty</legend>
-          <div class="seg" role="radiogroup">
-            <label><input type="radio" name="difficulty" value="easy"><span>Easy</span></label>
-            <label><input type="radio" name="difficulty" value="medium" checked><span>Medium</span></label>
-            <label><input type="radio" name="difficulty" value="hard"><span>Hard</span></label>
-          </div>
-        </fieldset>
-
-        <fieldset>
-          <legend class="mono">Card style</legend>
-          <div class="seg seg-4" role="radiogroup">
-            <label><input type="radio" name="style" value="qa" checked><span>Q&amp;A</span></label>
-            <label><input type="radio" name="style" value="cloze"><span>Fill blank</span></label>
-            <label><input type="radio" name="style" value="definition"><span>Define</span></label>
-            <label><input type="radio" name="style" value="mixed"><span>Mixed</span></label>
-          </div>
-        </fieldset>
-
-        <div class="two">
-          <div>
-            <label class="mono lbl" for="language">Language</label>
-            <select id="language">
-              <option>English</option><option>Hindi</option><option>Spanish</option><option>French</option>
-              <option>German</option><option>Portuguese</option><option>Japanese</option>
-            </select>
-          </div>
-          <div>
-            <label class="mono lbl" for="count">Cards <output id="countOut">8</output></label>
-            <input id="count" type="range" min="3" max="20" value="8">
-          </div>
-        </div>
-
-        <button type="submit" class="cta" id="submit"><span>Generate flashcards</span><kbd class="mono">Ctrl + Enter</kbd></button>
-      </form>
-      <p id="status" role="status" aria-live="polite"></p>
-    </section>
-
-    <section class="deck" aria-label="Your deck">
+    <section class="stage" aria-label="Your deck">
       <div class="empty" id="empty">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1.5l2.2 6.3 6.3 2.2-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-2.2z"/></svg>
-        <h2>Your deck will appear here</h2>
-        <p>Pick a topic on the left, or tap one of the examples to start.</p>
+        <svg class="illus" viewBox="0 0 440 340" aria-hidden="true">
+          <defs>
+            <g id="face"><rect x="-86" y="-58" width="172" height="116" rx="14"/></g>
+          </defs>
+          <ellipse cx="220" cy="296" rx="170" ry="26" fill="#000" opacity=".07"/>
+          <g transform="translate(220 232)">
+            <g transform="translate(0 12)"><g transform="matrix(.866 .5 -.866 .5 0 0)" fill="#8fb3cf"><use href="#face"/></g></g>
+            <g transform="matrix(.866 .5 -.866 .5 0 0)" fill="#b7d3e8"><use href="#face"/></g>
+          </g>
+          <g transform="translate(220 192)">
+            <g transform="translate(0 12)"><g transform="matrix(.866 .5 -.866 .5 0 0)" fill="#dfe3e6"><use href="#face"/></g></g>
+            <g transform="matrix(.866 .5 -.866 .5 0 0)" fill="#fff" stroke="#00000014"><use href="#face"/></g>
+          </g>
+          <g transform="translate(220 152)">
+            <g transform="translate(0 12)"><g transform="matrix(.866 .5 -.866 .5 0 0)" fill="#e0602a"><use href="#face"/></g></g>
+            <g transform="matrix(.866 .5 -.866 .5 0 0)">
+              <use href="#face" fill="#ff7a3c"/>
+              <rect x="-60" y="-26" width="92" height="10" rx="5" fill="#fff"/>
+              <rect x="-60" y="-6" width="120" height="10" rx="5" fill="#fff" opacity=".85"/>
+              <rect x="-60" y="14" width="70" height="10" rx="5" fill="#fff" opacity=".6"/>
+            </g>
+          </g>
+          <path fill="#0b0b0c" d="M352 58l5 14 14 5-14 5-5 14-5-14-14-5 14-5zM92 96l3.5 9.5 9.5 3.5-9.5 3.5L92 122l-3.5-9.5L79 109l9.5-3.5z"/>
+        </svg>
+        <h2>your deck will appear here</h2>
+        <p>Type a topic, paste notes, or upload a pdf or photo on the right.</p>
       </div>
 
       <div class="toolbar" id="toolbar" hidden>
-        <div class="deck-title"><span class="mono" id="deckMeta"></span><strong id="deckName"></strong></div>
+        <div class="deck-title"><span id="deckMeta"></span><strong id="deckName"></strong></div>
         <div class="tools">
           <div class="seg seg-sm" role="radiogroup" aria-label="View">
             <label><input type="radio" name="view" value="grid" checked><span>Grid</span></label>
@@ -104,23 +75,85 @@
 
       <div id="study" class="study" hidden>
         <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
-        <p class="mono study-meta"><span id="studyPos"></span><span id="studyScore"></span></p>
+        <p class="study-meta"><span id="studyPos"></span><span id="studyScore"></span></p>
         <div id="studyCard"></div>
         <div class="study-actions">
           <button type="button" class="btn" id="prevBtn" aria-label="Previous card">Back</button>
-          <button type="button" class="btn miss" id="missBtn">Still learning <kbd class="mono">1</kbd></button>
-          <button type="button" class="btn hit" id="hitBtn">Got it <kbd class="mono">2</kbd></button>
+          <button type="button" class="btn miss" id="missBtn">Still learning <kbd>1</kbd></button>
+          <button type="button" class="btn hit" id="hitBtn">Got it <kbd>2</kbd></button>
           <button type="button" class="btn" id="nextBtn" aria-label="Next card">Next</button>
         </div>
-        <p class="mono keys">Space flips &middot; arrow keys move &middot; 1 / 2 grade the card</p>
+        <p class="keys">space flips &middot; arrow keys move &middot; 1 / 2 grade the card</p>
       </div>
+    </section>
+
+    <section class="compose" aria-labelledby="title">
+      <p class="kicker">[ got notes, a pdf or a photo? ]</p>
+      <h1 id="title">turn it into <span class="ul">flashcards</span></h1>
+      <p class="lede">Type a topic, paste your notes or upload a file. The model writes the cards, you choose how hard they are and how they look.</p>
+
+      <form id="form" novalidate>
+        <div class="field">
+          <label for="input" class="sr-only">Topic or notes</label>
+          <textarea id="input" placeholder="Try: how does the immune system work?  Or paste a page of notes..." maxlength="6000"></textarea>
+          <span class="count" id="charCount">0 / 6000</span>
+        </div>
+
+        <label class="drop" id="drop" for="file">
+          <input type="file" id="file" class="sr-only" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,image/bmp">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0l-4.5 4.5M12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 005.5 20h13a1.5 1.5 0 001.5-1.5V15"/></svg>
+          <span class="drop-text">
+            <b>[ upload a pdf or photo ]</b>
+            <small id="dropHint">drop it here or click. Read in your browser, the file is never uploaded.</small>
+          </span>
+        </label>
+        <div class="chip" id="fileChip" hidden><span id="fileName"></span><button type="button" id="fileClear" aria-label="Dismiss file note">&times;</button></div>
+
+        <div class="examples" id="examples" aria-label="Example topics"></div>
+
+        <fieldset>
+          <legend>[ difficulty ]</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="difficulty" value="easy"><span>Easy</span></label>
+            <label><input type="radio" name="difficulty" value="medium" checked><span>Medium</span></label>
+            <label><input type="radio" name="difficulty" value="hard"><span>Hard</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>[ card style ]</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="style" value="qa" checked><span>Q&amp;A</span></label>
+            <label><input type="radio" name="style" value="cloze"><span>Fill blank</span></label>
+            <label><input type="radio" name="style" value="definition"><span>Define</span></label>
+            <label><input type="radio" name="style" value="mixed"><span>Mixed</span></label>
+          </div>
+        </fieldset>
+
+        <div class="two">
+          <div>
+            <label class="lbl" for="language">[ language ]</label>
+            <select id="language">
+              <option>English</option><option>Hindi</option><option>Spanish</option><option>French</option>
+              <option>German</option><option>Portuguese</option><option>Japanese</option>
+            </select>
+          </div>
+          <div>
+            <label class="lbl" for="count">[ cards <output id="countOut">8</output> ]</label>
+            <input id="count" type="range" min="3" max="20" value="8">
+          </div>
+        </div>
+
+        <button type="submit" class="cta" id="submit"><span>Generate flashcards</span><kbd>Ctrl + Enter</kbd></button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
     </section>
   </main>
 
   <dialog id="decksDialog">
-    <div class="dlg-head"><h2>Saved decks</h2><button type="button" class="btn" id="closeDecks">Close</button></div>
+    <div class="dlg-head"><h2>saved decks</h2><button type="button" class="btn" id="closeDecks">Close</button></div>
     <ul id="deckList" class="deck-list"></ul>
-    <p class="mono muted" id="noDecks">Nothing saved yet. Generate a deck and press Save.</p>
+    <p class="muted" id="noDecks">Nothing saved yet. Generate a deck and press Save.</p>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
