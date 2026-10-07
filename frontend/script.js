@@ -1,6 +1,5 @@
-// Same-origin when served by Flask (http://127.0.0.1:5000); otherwise assume the backend runs locally.
-const servedByBackend = location.protocol.startsWith("http") && location.port === "5000";
-const API_URL = window.API_URL || (servedByBackend ? "" : "http://127.0.0.1:5000");
+// Same-origin whenever the page is served over http(s) (Flask serves the frontend); only a double-clicked file needs the local URL.
+const API_URL = window.API_URL || (location.protocol === "file:" ? "http://127.0.0.1:5000" : "");
 
 // Input longer than this, or spanning several lines, is treated as pasted notes rather than a topic.
 const NOTES_MIN_CHARS = 120;
