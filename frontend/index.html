@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Flashcards</title>
   <meta name="theme-color" content="#8fb8d8">
+  <meta name="description" content="Turn a topic, your notes, a PDF or a photo into study flashcards with AI.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff7a3c' d='M12 1.5l2.2 6.3 6.3 2.2-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-2.2z'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -149,6 +151,10 @@
       <p id="status" role="status" aria-live="polite"></p>
     </section>
   </main>
+
+  <footer class="foot">
+    <p>Your topic or notes are sent to an AI model (Hugging Face) to write the cards. PDFs and photos are read in your browser and are never uploaded. Nothing is stored on the server; saved decks stay in this browser. AI can make mistakes, so check important facts.</p>
+  </footer>
 
   <dialog id="decksDialog">
     <div class="dlg-head"><h2>saved decks</h2><button type="button" class="btn" id="closeDecks">Close</button></div>

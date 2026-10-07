@@ -41,6 +41,28 @@ Check the backend with `curl http://127.0.0.1:5000/api/health`.
 - `difficulty`: `easy` | `medium` | `hard`. `style`: `qa` | `cloze` | `definition` | `mixed`. `language`: one of the languages above. Invalid values return 400.
 - Returns `{ "flashcards": [{ "question", "answer", "hint" }], "source": "ai" | "fallback", "warning"? }`.
 - If the model call fails, simple sentence-based cards are returned with a `warning`.
+- Over the rate limit returns 429 with a `Retry-After` header; a busy server returns 503.
+
+## Put it online (public use)
+
+The app is one Flask service that also serves the frontend, so any host that runs Python works. The repo includes a `render.yaml` and a `Procfile`.
+
+**Render (free tier):**
+1. Revoke any Hugging Face token that was ever pasted into chat or code, then create a **new fine-grained token** that can only make Inference Provider calls.
+2. On render.com choose **New > Blueprint**, connect this repo and apply `render.yaml`.
+3. When asked, paste the token as `HF_API_KEY`. It is stored in Render, never in git.
+4. Open the `https://...onrender.com` URL you get. The free tier sleeps when idle, so the first visit after a pause takes about 30 seconds.
+
+Railway, Fly.io and similar hosts work the same way: install `backend/requirements.txt`, run the `Procfile` command, set `HF_API_KEY` and `PROXY_HOPS=1`.
+
+**Built in for strangers using it:**
+- Per-visitor limits (5 per minute, 30 per hour) and a daily cap for everyone together (300 on Render), so nobody can drain your Hugging Face quota. Tune with `RATE_PER_MIN`, `RATE_PER_HOUR`, `DAILY_LIMIT`.
+- At most 4 model calls at once (`MAX_CONCURRENT`); extra requests get a friendly "busy" message.
+- Upstream error details stay in the server logs; visitors only see generic messages. Pasted text is not logged.
+- Same-origin API (no open CORS), request size cap, a strict Content-Security-Policy and other security headers, HTTPS-only HSTS.
+- A privacy note in the footer: text goes to Hugging Face, files stay in the browser, nothing is stored server side.
+
+The counters live in memory, so keep a single worker process (as configured) and expect them to reset when the service restarts. Also set a monthly spending limit on your Hugging Face account as a second safety net.
 
 ## Config (`backend/.env`)
 
@@ -49,7 +71,13 @@ Check the backend with `curl http://127.0.0.1:5000/api/health`.
 | `HF_API_KEY` | required |
 | `HF_MODEL` | `meta-llama/Llama-3.1-8B-Instruct` |
 | `PORT` | `5000` |
-| `FLASK_DEBUG` | `0` |
+| `FLASK_DEBUG` | `0` (never `1` on a public server) |
+| `RATE_PER_MIN` / `RATE_PER_HOUR` | `5` / `30` per visitor |
+| `DAILY_LIMIT` | `500` for everyone together, `0` = off |
+| `MAX_CONCURRENT` | `4` |
+| `PROXY_HOPS` | `0` locally, `1` behind Render/Railway/Fly |
+| `CORS_ORIGINS` | empty (same-origin) |
+| `LOG_MODEL_OUTPUT` | `0`; set `1` only to debug unusable model output |
 
 ## Upload notes
 
