@@ -2,17 +2,38 @@ import json
 import logging
 import os
 import re
+import threading
+import time
+from collections import deque
 
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
 
 HF_API_KEY = os.getenv("HF_API_KEY")
 HF_MODEL = os.getenv("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
 HF_URL = os.getenv("HF_URL", "https://router.huggingface.co/v1/chat/completions")
+
+
+def _env_int(name, default):
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+# Public-use limits. Counters live in memory, so run a single worker process (see Procfile / render.yaml).
+RATE_PER_MIN = _env_int("RATE_PER_MIN", 5)        # per visitor IP
+RATE_PER_HOUR = _env_int("RATE_PER_HOUR", 30)     # per visitor IP
+DAILY_LIMIT = _env_int("DAILY_LIMIT", 500)        # all visitors together; protects your HF quota (0 = off)
+MAX_CONCURRENT = _env_int("MAX_CONCURRENT", 4)    # simultaneous model calls
+PROXY_HOPS = _env_int("PROXY_HOPS", 0)            # number of trusted reverse proxies in front (Render/Railway: 1)
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+LOG_MODEL_OUTPUT = os.getenv("LOG_MODEL_OUTPUT", "0") == "1"  # off by default: output can contain user text
 
 DEFAULT_CARDS = 5
 MAX_CARDS = 20
@@ -41,7 +62,112 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fr
 
 # Serving the frontend from Flask means one command runs the whole app.
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
-CORS(app)
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # a 6000-char request is far below this
+if PROXY_HOPS:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=PROXY_HOPS, x_proto=PROXY_HOPS, x_host=PROXY_HOPS)
+if CORS_ORIGINS:  # same-origin by default; only open the API to origins you list
+    CORS(app, resources={r"/api/*": {"origins": CORS_ORIGINS}})
+
+
+class RateLimiter:
+    """Sliding-window limits per client key plus one global daily cap."""
+
+    def __init__(self, per_minute, per_hour, per_day, max_keys=10000):
+        self.per_minute, self.per_hour, self.per_day, self.max_keys = per_minute, per_hour, per_day, max_keys
+        self.hits = {}
+        self.day = None
+        self.day_count = 0
+        self.lock = threading.Lock()
+
+    def check(self, key, now=None):
+        """Return (allowed, retry_after_seconds, reason). Allowed calls are counted."""
+        now = time.time() if now is None else now
+        with self.lock:
+            today = int(now // 86400)
+            if today != self.day:
+                self.day, self.day_count = today, 0
+            if self.per_day and self.day_count >= self.per_day:
+                return False, 86400 - int(now % 86400), "daily"
+
+            q = self.hits.get(key)
+            if q is not None:
+                while q and now - q[0] >= 3600:
+                    q.popleft()
+                if self.per_hour and len(q) >= self.per_hour:
+                    return False, int(3600 - (now - q[0])) + 1, "hour"
+                recent = [t for t in q if now - t < 60]
+                if self.per_minute and len(recent) >= self.per_minute:
+                    return False, int(60 - (now - recent[0])) + 1, "minute"
+            else:
+                q = self.hits[key] = deque()
+
+            q.append(now)
+            self.day_count += 1
+            if len(self.hits) > self.max_keys:
+                self._purge(now)
+            return True, 0, ""
+
+    def _purge(self, now):
+        for k in [k for k, q in self.hits.items() if not q or now - q[-1] >= 3600]:
+            del self.hits[k]
+        if len(self.hits) > self.max_keys:  # still too many (many distinct IPs): drop the least recent half
+            oldest = sorted(self.hits, key=lambda k: self.hits[k][-1])
+            for k in oldest[: len(oldest) // 2]:
+                del self.hits[k]
+
+
+limiter = RateLimiter(RATE_PER_MIN, RATE_PER_HOUR, DAILY_LIMIT)
+llm_slots = threading.BoundedSemaphore(max(1, MAX_CONCURRENT))
+
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'",
+    "style-src 'self' https://fonts.googleapis.com",
+    "font-src https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "connect-src 'self' data: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
+@app.after_request
+def security_headers(resp):
+    resp.headers.setdefault("Content-Security-Policy", CSP)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.is_secure:
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    if request.path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return jsonify({"error": "That request is too large."}), 413
+
+
+@app.errorhandler(404)
+def not_found(_):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Not found."}), 404
+    return "Not found", 404
+
+
+@app.errorhandler(405)
+def bad_method(_):
+    return jsonify({"error": "Method not allowed."}), 405
+
+
+@app.errorhandler(500)
+def server_error(_):
+    return jsonify({"error": "Something went wrong on the server."}), 500
 
 SYSTEM_PROMPT = (
     "You write concise study flashcards. Reply with ONLY a JSON array, no prose and "
@@ -54,7 +180,8 @@ SYSTEM_PROMPT = (
 def query_llm(user_prompt, timeout=60):
     """Call the Hugging Face chat-completions router. Returns (text, error)."""
     if not HF_API_KEY:
-        return None, "Hugging Face API key not configured (set HF_API_KEY in backend/.env)."
+        logger.error("HF_API_KEY is not set")
+        return None, "The AI service is not configured on this server."
 
     payload = {
         "model": HF_MODEL,
@@ -71,17 +198,17 @@ def query_llm(user_prompt, timeout=60):
         resp = requests.post(HF_URL, headers=headers, json=payload, timeout=timeout)
     except requests.RequestException as e:
         logger.exception("Network error calling Hugging Face")
-        return None, f"Network error: {e}"
+        return None, "The AI service could not be reached."
 
     if resp.status_code != 200:
         logger.error("Hugging Face returned %s: %s", resp.status_code, resp.text[:500])
-        return None, f"Hugging Face error {resp.status_code}: {resp.text[:300]}"
+        return None, "The AI service is unavailable right now."
 
     try:
         return resp.json()["choices"][0]["message"]["content"], None
     except (ValueError, KeyError, IndexError, TypeError):
         logger.error("Unexpected Hugging Face response shape: %s", resp.text[:500])
-        return None, "Unexpected response format from Hugging Face."
+        return None, "The AI service returned an unexpected response."
 
 
 def _clean_card(item):
@@ -195,7 +322,9 @@ def health():
 
 @app.route("/api/flashcards", methods=["POST"])
 def api_flashcards():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
     topic = str(data.get("topic") or "").strip()
     text = str(data.get("text") or "").strip()
 
@@ -218,19 +347,38 @@ def api_flashcards():
     if language not in LANGUAGES:
         return jsonify({"error": f"language must be one of: {', '.join(LANGUAGES)}."}), 400
 
+    allowed, retry_after, reason = limiter.check(request.remote_addr or "unknown")
+    if not allowed:
+        logger.warning("Rate limited (%s) for %s", reason, request.remote_addr)
+        message = (
+            "The free daily limit for everyone has been reached. Please try again tomorrow."
+            if reason == "daily"
+            else f"You are going a bit fast. Please try again in {retry_after} seconds."
+        )
+        resp = jsonify({"error": message, "retry_after": retry_after})
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(retry_after)
+        return resp
+
     source = (text or topic)[:MAX_INPUT_CHARS]
     prompt = build_prompt(num_cards, source, bool(text), difficulty, style, language)
 
+    if not llm_slots.acquire(blocking=False):
+        return jsonify({"error": "The server is busy. Please try again in a few seconds."}), 503
     error = None
-    for attempt in (1, 2):
-        output, error = query_llm(prompt)
-        if error:
-            break
-        cards = parse_flashcards(output, num_cards)
-        if cards:
-            return jsonify({"flashcards": cards, "source": "ai"}), 200
-        logger.warning("Attempt %s: unusable model output: %r", attempt, (output or "")[:300])
-        error = "The model returned no usable flashcards."
+    try:
+        for attempt in (1, 2):
+            output, error = query_llm(prompt)
+            if error:
+                break
+            cards = parse_flashcards(output, num_cards)
+            if cards:
+                return jsonify({"flashcards": cards, "source": "ai"}), 200
+            shown = repr((output or "")[:300]) if LOG_MODEL_OUTPUT else f"{len(output or '')} chars"
+            logger.warning("Attempt %s: unusable model output: %s", attempt, shown)
+            error = "The model returned no usable flashcards."
+    finally:
+        llm_slots.release()
 
     logger.warning("Generation failed (%s); using fallback.", error)
     cards = fallback_flashcards(source, num_cards)
@@ -244,4 +392,6 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "5000"))
     logger.info("Starting AI Flashcards backend on %s:%s (model=%s, key set=%s)", host, port, HF_MODEL, bool(HF_API_KEY))
+    if debug:
+        logger.warning("FLASK_DEBUG=1: never use debug mode on a public server.")
     app.run(host=host, port=port, debug=debug)

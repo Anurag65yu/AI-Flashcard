@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ai-flashcards
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: HF_API_KEY
+        sync: false        # you paste it in the Render dashboard; never commit it
+      - key: PROXY_HOPS
+        value: "1"
+      - key: DAILY_LIMIT
+        value: "300"
