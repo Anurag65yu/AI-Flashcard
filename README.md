@@ -82,3 +82,5 @@ The counters live in memory, so keep a single worker process (as configured) and
 ## Upload notes
 
 The readers (pdf.js and Tesseract.js) are loaded on demand from jsDelivr with pinned versions and SRI hashes, so you need internet access the first time you upload. OCR also downloads its English language data and a WebAssembly core from a CDN; those are fetched by the library and cannot be SRI-pinned. To avoid third-party CDNs entirely, self-host the files and change `LIBS` in `frontend/script.js`.
+
+Render Live site - https://ai-flashcards-j936.onrender.com/
