@@ -177,6 +177,19 @@ SYSTEM_PROMPT = (
 )
 
 
+def upstream_message(status):
+    """Short, secret-free explanation shown to visitors for a failed model call."""
+    if status == 402:
+        return "The AI credits for this site are used up. The site owner needs to top them up."
+    if status in (401, 403):
+        return "The AI service rejected this site's access key. The site owner needs to update it."
+    if status in (400, 404):
+        return "The configured AI model is not available. The site owner needs to pick another model."
+    if status == 429:
+        return "The AI service is busy right now. Please try again in a minute."
+    return "The AI service is unavailable right now."
+
+
 def query_llm(user_prompt, timeout=60):
     """Call the Hugging Face chat-completions router. Returns (text, error)."""
     if not HF_API_KEY:
@@ -202,7 +215,7 @@ def query_llm(user_prompt, timeout=60):
 
     if resp.status_code != 200:
         logger.error("Hugging Face returned %s: %s", resp.status_code, resp.text[:500])
-        return None, "The AI service is unavailable right now."
+        return None, upstream_message(resp.status_code)
 
     try:
         return resp.json()["choices"][0]["message"]["content"], None
