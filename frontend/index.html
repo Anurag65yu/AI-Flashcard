@@ -112,8 +112,6 @@
         </label>
         <div class="files" id="fileList" hidden></div>
 
-        <div class="examples" id="examples" aria-label="Example topics"></div>
-
         <fieldset>
           <legend>[ difficulty ]</legend>
           <div class="seg" role="radiogroup">
@@ -144,8 +142,12 @@
             </select>
           </div>
           <div>
-            <label class="lbl" for="count">[ cards <output id="countOut">8</output> ]</label>
-            <input id="count" type="range" min="3" max="20" value="8">
+            <label class="lbl" for="count">[ cards, 1 to 20 ]</label>
+            <div class="stepper">
+              <button type="button" id="countDown" aria-label="Fewer cards">&minus;</button>
+              <input id="count" type="number" inputmode="numeric" min="1" max="20" step="1" value="8">
+              <button type="button" id="countUp" aria-label="More cards">+</button>
+            </div>
           </div>
         </div>
 
