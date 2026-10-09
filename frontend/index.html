@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="quiz.css">
 </head>
 <body>
   <div class="topband" aria-hidden="true"></div>
@@ -97,19 +98,19 @@
       <form id="form" novalidate>
         <div class="field">
           <label for="input" class="sr-only">Topic or notes</label>
-          <textarea id="input" placeholder="Try: how does the immune system work?  Or paste a page of notes..." maxlength="6000"></textarea>
-          <span class="count" id="charCount">0 / 6000</span>
+          <textarea id="input" placeholder="Try: how does the immune system work?  Or paste a page of notes..." maxlength="12000"></textarea>
+          <span class="count" id="charCount">0 / 12,000</span>
         </div>
 
         <label class="drop" id="drop" for="file">
-          <input type="file" id="file" class="sr-only" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,image/bmp">
+          <input type="file" id="file" class="sr-only" multiple accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,image/bmp">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0l-4.5 4.5M12 4l4.5 4.5M4 15v3.5A1.5 1.5 0 005.5 20h13a1.5 1.5 0 001.5-1.5V15"/></svg>
           <span class="drop-text">
-            <b>[ upload a pdf or photo ]</b>
-            <small id="dropHint">drop it here or click. Read in your browser, the file is never uploaded.</small>
+            <b>[ upload pdfs or photos ]</b>
+            <small id="dropHint">drop several files or click. Read in your browser, files are never uploaded.</small>
           </span>
         </label>
-        <div class="chip" id="fileChip" hidden><span id="fileName"></span><button type="button" id="fileClear" aria-label="Dismiss file note">&times;</button></div>
+        <div class="files" id="fileList" hidden></div>
 
         <div class="examples" id="examples" aria-label="Example topics"></div>
 
@@ -128,6 +129,8 @@
             <label><input type="radio" name="style" value="qa" checked><span>Q&amp;A</span></label>
             <label><input type="radio" name="style" value="cloze"><span>Fill blank</span></label>
             <label><input type="radio" name="style" value="definition"><span>Define</span></label>
+            <label><input type="radio" name="style" value="mcq"><span>Multiple choice</span></label>
+            <label><input type="radio" name="style" value="truefalse"><span>True / False</span></label>
             <label><input type="radio" name="style" value="mixed"><span>Mixed</span></label>
           </div>
         </fieldset>

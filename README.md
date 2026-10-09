@@ -4,8 +4,9 @@ Type a topic, paste notes, or upload a PDF or photo and get study flashcards. A 
 
 ## Features
 
-- **Photo / PDF upload**: drop a PDF or a PNG/JPG/WebP/BMP photo and the text is read in your browser, put into the editable box, then turned into cards. Text PDFs are read directly (first 30 pages). Scanned PDFs and photos use OCR (first 5 pages, English only). Max 15 MB, text is trimmed to 6000 characters. The file itself is never sent to the server; only the extracted text is, like any pasted notes.
-- **Options**: difficulty (easy / medium / hard), card style (Q&A, fill in the blank, definition, mixed), output language (English, Hindi, Spanish, French, German, Portuguese, Japanese) and 3-20 cards.
+- **Photo / PDF upload**: drop or paste up to 8 PDFs and PNG/JPG/WebP/BMP photos at once. Text is read in your browser and appended to the editable box, and each file shows up in a list with its size and a remove button (or clear everything at once). Text PDFs are read directly (first 30 pages, stopping once the box is full). Scanned PDFs and photos use OCR (first 5 pages, English only). Max 15 MB per file. The box holds 12,000 characters by default (`MAX_INPUT_CHARS`). The files themselves are never sent to the server; only the extracted text is, like any pasted notes.
+- **Options**: difficulty (easy / medium / hard), card style (Q&A, fill in the blank, definition, multiple choice, true/false, mixed), output language (English, Hindi, Spanish, French, German, Portuguese, Japanese) and 3-20 cards.
+- **Quiz cards**: multiple-choice and true/false cards are answered by clicking an option, show right/wrong with an explanation, and keep a running score.
 - **Hints**: every card can carry a short hint, blurred until you hover or focus it.
 - **Grid or Study view**: study mode tracks "Got it" / "Still learning", then offers "Review missed" or "Study again".
 - **Keyboard**: Ctrl+Enter generates; in study mode Space flips, arrow keys move, `1` / `2` grade the card.
@@ -50,8 +51,8 @@ The provider is chosen only by environment variables, so you can switch without 
 ```
 
 - Send `topic` or `text` (notes). `num_cards` is 1-20.
-- `difficulty`: `easy` | `medium` | `hard`. `style`: `qa` | `cloze` | `definition` | `mixed`. `language`: one of the languages above. Invalid values return 400.
-- Returns `{ "flashcards": [{ "question", "answer", "hint" }], "source": "ai" | "fallback", "warning"? }`.
+- `difficulty`: `easy` | `medium` | `hard`. `style`: `qa` | `cloze` | `definition` | `mcq` | `truefalse` | `mixed`. `language`: one of the languages above. Invalid values return 400.
+- Returns `{ "flashcards": [{ "question", "answer", "hint", "type"?, "options"?, "correct"? }], "source": "ai" | "fallback", "warning"? }`.
 - If the model call fails, simple sentence-based cards are returned with a `warning`.
 - Over the rate limit returns 429 with a `Retry-After` header; a busy server returns 503.
 
@@ -86,6 +87,7 @@ The counters live in memory, so keep a single worker process (as configured) and
 | `PORT` | `5000` |
 | `FLASK_DEBUG` | `0` (never `1` on a public server) |
 | `RATE_PER_MIN` / `RATE_PER_HOUR` | `5` / `30` per visitor |
+| `MAX_INPUT_CHARS` | `12000` (500-30000). Raise only if your provider's tokens-per-minute limit allows |
 | `DAILY_LIMIT` | `500` for everyone together, `0` = off |
 | `MAX_CONCURRENT` | `4` |
 | `PROXY_HOPS` | `0` locally, `1` behind Render/Railway/Fly |
