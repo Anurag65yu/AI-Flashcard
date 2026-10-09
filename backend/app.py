@@ -5,6 +5,7 @@ import re
 import threading
 import time
 from collections import deque
+from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
@@ -15,17 +16,23 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 load_dotenv()
 
 
+def _clean(raw):
+    """Tolerate values pasted with spaces, newlines or surrounding quotes."""
+    return (raw or "").strip().strip("\"'").strip()
+
+
 def _clean_key(raw):
-    """Tolerate keys pasted with spaces, newlines, quotes or a 'Bearer ' prefix."""
-    key = (raw or "").strip().strip("\"'").strip()
+    """Same as _clean, plus a stray 'Bearer ' prefix."""
+    key = _clean(raw)
     if key.lower().startswith("bearer "):
         key = key[7:].strip()
     return key
 
 
 HF_API_KEY = _clean_key(os.getenv("HF_API_KEY"))
-HF_MODEL = os.getenv("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct").strip()
-HF_URL = os.getenv("HF_URL", "https://router.huggingface.co/v1/chat/completions").strip()
+HF_MODEL = _clean(os.getenv("HF_MODEL")) or "meta-llama/Llama-3.1-8B-Instruct"
+HF_URL = _clean(os.getenv("HF_URL")) or "https://router.huggingface.co/v1/chat/completions"
+PROVIDER_HOST = urlparse(HF_URL).netloc
 
 
 def _env_int(name, default):
@@ -67,8 +74,11 @@ LANGUAGES = ["English", "Hindi", "Spanish", "French", "German", "Portuguese", "J
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-flashcards-backend")
 
-if HF_API_KEY and not HF_API_KEY.startswith("hf_"):
-    logger.warning("HF_API_KEY does not start with 'hf_' (length %s); check the value in your host's env vars.", len(HF_API_KEY))
+if HF_API_KEY and not HF_API_KEY.startswith(("hf_", "gsk_")):
+    logger.warning("API key has an unexpected prefix (length %s); check the value in your host's env vars.", len(HF_API_KEY))
+if not HF_URL.startswith("https://") or not HF_URL.rstrip("/").endswith("/chat/completions"):
+    logger.warning("HF_URL does not look like a chat-completions endpoint: %s", HF_URL)
+logger.info("AI provider host=%s model=%s", PROVIDER_HOST, HF_MODEL)
 
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
@@ -203,7 +213,7 @@ def upstream_message(status):
 
 
 def query_llm(user_prompt, timeout=60):
-    """Call the Hugging Face chat-completions router. Returns (text, error)."""
+    """Call the OpenAI-compatible chat-completions endpoint. Returns (text, error)."""
     if not HF_API_KEY:
         logger.error("HF_API_KEY is not set")
         return None, "The AI service is not configured on this server."
@@ -222,17 +232,17 @@ def query_llm(user_prompt, timeout=60):
     try:
         resp = requests.post(HF_URL, headers=headers, json=payload, timeout=timeout)
     except requests.RequestException as e:
-        logger.exception("Network error calling Hugging Face")
+        logger.exception("Network error calling the AI provider")
         return None, "The AI service could not be reached."
 
     if resp.status_code != 200:
-        logger.error("Hugging Face returned %s: %s", resp.status_code, resp.text[:500])
+        logger.error("AI provider %s (model %s) returned %s: %s", PROVIDER_HOST, HF_MODEL, resp.status_code, resp.text[:500])
         return None, upstream_message(resp.status_code)
 
     try:
         return resp.json()["choices"][0]["message"]["content"], None
     except (ValueError, KeyError, IndexError, TypeError):
-        logger.error("Unexpected Hugging Face response shape: %s", resp.text[:500])
+        logger.error("Unexpected AI provider response shape: %s", resp.text[:500])
         return None, "The AI service returned an unexpected response."
 
 
@@ -342,7 +352,7 @@ def index():
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"ok": True, "huggingface": bool(HF_API_KEY), "model": HF_MODEL})
+    return jsonify({"ok": True, "huggingface": bool(HF_API_KEY), "model": HF_MODEL, "provider": PROVIDER_HOST})
 
 
 @app.route("/api/flashcards", methods=["POST"])
