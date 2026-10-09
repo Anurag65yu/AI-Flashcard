@@ -14,9 +14,18 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
 
-HF_API_KEY = os.getenv("HF_API_KEY")
-HF_MODEL = os.getenv("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
-HF_URL = os.getenv("HF_URL", "https://router.huggingface.co/v1/chat/completions")
+
+def _clean_key(raw):
+    """Tolerate keys pasted with spaces, newlines, quotes or a 'Bearer ' prefix."""
+    key = (raw or "").strip().strip("\"'").strip()
+    if key.lower().startswith("bearer "):
+        key = key[7:].strip()
+    return key
+
+
+HF_API_KEY = _clean_key(os.getenv("HF_API_KEY"))
+HF_MODEL = os.getenv("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct").strip()
+HF_URL = os.getenv("HF_URL", "https://router.huggingface.co/v1/chat/completions").strip()
 
 
 def _env_int(name, default):
@@ -57,6 +66,9 @@ LANGUAGES = ["English", "Hindi", "Spanish", "French", "German", "Portuguese", "J
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-flashcards-backend")
+
+if HF_API_KEY and not HF_API_KEY.startswith("hf_"):
+    logger.warning("HF_API_KEY does not start with 'hf_' (length %s); check the value in your host's env vars.", len(HF_API_KEY))
 
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
