@@ -5,21 +5,15 @@ const API_URL = window.API_URL || (location.protocol === "file:" ? "http://127.0
 const NOTES_MIN_CHARS = 120;
 const STORE_KEY = "ai-flashcards:decks";
 const MAX_SAVED_DECKS = 50;
-const EXAMPLES = [
-  "Photosynthesis",
-  "How the immune system works",
-  "Python decorators",
-  "French Revolution",
-  "Newton's laws of motion",
-  "Machine learning basics",
-];
+const MIN_CARDS = 1;
+const MAX_CARDS = 20;
 
 const $ = (id) => document.getElementById(id);
 const radio = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
 
 const els = {
-  form: $("form"), input: $("input"), count: $("count"), countOut: $("countOut"), charCount: $("charCount"),
-  language: $("language"), submit: $("submit"), status: $("status"), examples: $("examples"),
+  form: $("form"), input: $("input"), count: $("count"), countDown: $("countDown"), countUp: $("countUp"), charCount: $("charCount"),
+  language: $("language"), submit: $("submit"), status: $("status"),
   empty: $("empty"), toolbar: $("toolbar"), grid: $("flashcards"), study: $("study"),
   deckName: $("deckName"), deckMeta: $("deckMeta"),
   studyCard: $("studyCard"), studyPos: $("studyPos"), studyScore: $("studyScore"), progressBar: $("progressBar"),
@@ -283,7 +277,7 @@ async function generate(event) {
     return;
   }
 
-  const n = Number(els.count.value);
+  const n = clampCount();
   const isNotes = raw.length > NOTES_MIN_CHARS || raw.includes("\n");
   const payload = {
     ...(isNotes ? { text: raw } : { topic: raw }),
@@ -681,17 +675,6 @@ function clearAll() {
 }
 
 // ---------- wiring ----------
-EXAMPLES.forEach((topic) => {
-  els.examples.append(h("button", {
-    type: "button", text: topic,
-    onclick: () => {
-      els.input.value = topic;
-      els.input.dispatchEvent(new Event("input"));
-      els.input.focus();
-    },
-  }));
-});
-
 function updateCount() {
   const { value, maxLength } = els.input;
   els.charCount.textContent = `${value.length.toLocaleString()} / ${maxLength.toLocaleString()}`;
@@ -705,7 +688,14 @@ els.input.addEventListener("paste", (e) => {
 els.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) els.form.requestSubmit();
 });
-els.count.addEventListener("input", () => { els.countOut.textContent = els.count.value; });
+function clampCount() {
+  const n = Math.min(MAX_CARDS, Math.max(MIN_CARDS, Math.round(Number(els.count.value)) || MIN_CARDS));
+  els.count.value = n;
+  return n;
+}
+els.count.addEventListener("change", clampCount);
+els.countDown.addEventListener("click", () => { els.count.value = Number(els.count.value) - 1; clampCount(); });
+els.countUp.addEventListener("click", () => { els.count.value = Number(els.count.value) + 1; clampCount(); });
 els.form.addEventListener("submit", generate);
 
 els.file.addEventListener("change", () => handleFiles(els.file.files));
