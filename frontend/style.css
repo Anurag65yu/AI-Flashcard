@@ -139,13 +139,6 @@ select {
   border: 1.5px solid transparent; border-radius: 999px; appearance: none;
 }
 
-.examples { display: flex; flex-wrap: wrap; gap: 6px; }
-.examples button {
-  padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff;
-  font-size: 0.78rem; color: var(--muted);
-}
-.examples button:hover { color: var(--ink); border-color: var(--ink); }
-
 /* upload */
 .drop {
   display: flex; align-items: center; gap: 14px;
@@ -181,8 +174,19 @@ select {
 .seg-sm span { padding: 6px 13px; background: #fff; font-size: 0.82rem; }
 
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
-.two output { color: var(--ink); }
-input[type="range"] { width: 100%; height: 44px; margin: 0; accent-color: var(--ink); background: transparent; }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper button {
+  flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%;
+  background: var(--ink); color: #fff; font-size: 1.2rem; line-height: 1;
+}
+.stepper button:hover { background: var(--orange); }
+.stepper input {
+  flex: 1; min-width: 0; width: 100%; padding: 12px 8px; text-align: center;
+  font-family: var(--mono); font-size: 1rem; background: var(--pill);
+  border: 1.5px solid transparent; border-radius: 999px; -moz-appearance: textfield;
+}
+.stepper input:focus { outline: none; border-color: var(--ink); background: #fff; }
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .cta {
   display: flex; align-items: center; justify-content: center; gap: 12px;
