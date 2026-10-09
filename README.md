@@ -5,14 +5,14 @@ Type a topic, paste notes, or upload a PDF or photo and get study flashcards. A 
 ## Features
 
 - **Photo / PDF upload**: drop or paste up to 8 PDFs and PNG/JPG/WebP/BMP photos at once. Text is read in your browser and appended to the editable box, and each file shows up in a list with its size and a remove button (or clear everything at once). Text PDFs are read directly (first 30 pages, stopping once the box is full). Scanned PDFs and photos use OCR (first 5 pages, English only). Max 15 MB per file. The box holds 12,000 characters by default (`MAX_INPUT_CHARS`). The files themselves are never sent to the server; only the extracted text is, like any pasted notes.
-- **Options**: difficulty (easy / medium / hard), card style (Q&A, fill in the blank, definition, multiple choice, true/false, mixed), output language (English, Hindi, Spanish, French, German, Portuguese, Japanese) and 3-20 cards.
+- **Options**: difficulty (easy / medium / hard), card style (Q&A, fill in the blank, definition, multiple choice, true/false, mixed), output language (English, Hindi, Spanish, French, German, Portuguese, Japanese) and 1-20 cards (set with a number stepper).
 - **Quiz cards**: multiple-choice and true/false cards are answered by clicking an option, show right/wrong with an explanation, and keep a running score.
 - **Hints**: every card can carry a short hint, blurred until you hover or focus it.
 - **Grid or Study view**: study mode tracks "Got it" / "Still learning", then offers "Review missed" or "Study again".
 - **Keyboard**: Ctrl+Enter generates; in study mode Space flips, arrow keys move, `1` / `2` grade the card.
 - **Saved decks**: stored in your browser (localStorage), up to 50.
 - **Export**: CSV (opens in Excel / Anki import), JSON, or copy to clipboard. Shuffle and flip-all are included.
-- **Example topics** as one-click chips and a live model/status badge.
+- **Status badge**: a live model/status indicator in the header.
 
 ## Run it
 
