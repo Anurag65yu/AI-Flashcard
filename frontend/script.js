@@ -27,7 +27,7 @@ const els = {
   modelBadge: $("modelBadge"), modelText: $("modelText"),
   dialog: $("decksDialog"), deckList: $("deckList"), noDecks: $("noDecks"), deckCount: $("deckCount"),
   toast: $("toast"),
-  file: $("file"), drop: $("drop"), dropHint: $("dropHint"), fileChip: $("fileChip"), fileName: $("fileName"),
+  file: $("file"), drop: $("drop"), dropHint: $("dropHint"), fileList: $("fileList"),
 };
 
 const state = { cards: [], title: "", view: "grid", queue: [], pos: 0 };
@@ -71,11 +71,77 @@ function download(name, mime, content) {
 }
 
 // ---------- cards ----------
+function normCard(c) {
+  const card = { question: String(c.question), answer: String(c.answer), hint: typeof c.hint === "string" ? c.hint : "" };
+  if (Array.isArray(c.options) && c.options.length >= 2 && Number.isInteger(c.correct) && c.correct >= 0 && c.correct < c.options.length) {
+    card.type = c.type === "tf" ? "tf" : "mcq";
+    card.options = c.options.map(String);
+    card.correct = c.correct;
+  }
+  return card;
+}
+
+function quizStats() {
+  const quiz = state.cards.filter((c) => c.options);
+  const answered = quiz.filter((c) => c.picked != null);
+  return { total: quiz.length, answered: answered.length, right: answered.filter((c) => c.picked === c.correct).length };
+}
+
+function updateMeta() {
+  const q = quizStats();
+  els.deckMeta.textContent = `${state.cards.length} cards${q.answered ? ` · ${q.right}/${q.total} correct` : ""}`;
+  if (state.view === "study" && state.pos < state.queue.length) els.studyScore.textContent = studyScoreText();
+}
+
+function buildQuiz(card, index) {
+  const status = card.picked == null ? "" : card.picked === card.correct ? " known" : " learning";
+  const kind = card.type === "tf" ? "True / false" : "Multiple choice";
+  const reveal = h("p", { class: "reveal", hidden: "" });
+  const opts = card.options.map((text, i) => h("button", { type: "button", class: "opt", onclick: () => pick(i) },
+    h("b", { text: String.fromCharCode(65 + i) }),
+    h("span", { text }),
+  ));
+  const el = h("div", { class: `card quiz${status}` },
+    h("div", { class: "quiz-body" },
+      h("div", { class: "tag" }, h("span", { text: `${kind} ${pad(index)}` })),
+      h("p", { class: "body", text: card.question }),
+      h("div", { class: "opts" }, ...opts),
+      reveal,
+    ),
+  );
+
+  function show() {
+    const right = card.picked === card.correct;
+    opts.forEach((b, i) => {
+      b.disabled = true;
+      b.classList.toggle("right", i === card.correct);
+      b.classList.toggle("wrong", i === card.picked && !right);
+    });
+    reveal.textContent = `${right ? "Correct" : "Answer"}: ${card.answer}`;
+    reveal.hidden = false;
+    el.classList.remove("known", "learning");
+    el.classList.add(right ? "known" : "learning");
+  }
+
+  function pick(i) {
+    if (card.picked != null) return;
+    card.picked = i;
+    card.status = i === card.correct ? "known" : "learning";
+    show();
+    updateMeta();
+  }
+
+  el.style.setProperty("--i", Math.min(index, 12));
+  if (card.picked != null) show();
+  return el;
+}
+
 function toggleFlip(el) {
   el.setAttribute("aria-pressed", String(el.classList.toggle("flipped")));
 }
 
 function buildCard(card, index = 0) {
+  if (card.options) return buildQuiz(card, index);
   const front = h("div", { class: "face front" },
     h("div", { class: "tag" }, h("span", { text: `Question ${pad(index)}` })),
     h("p", { class: "body", text: card.question }),
@@ -122,16 +188,23 @@ function applyView() {
 
 function render() {
   els.deckName.textContent = state.title;
-  els.deckMeta.textContent = `${state.cards.length} cards`;
+  updateMeta();
   applyView();
 }
 
 // ---------- study mode ----------
 function startStudy(cards, reset = false) {
   if (reset) state.cards.forEach((c) => delete c.status);
+  cards.forEach((c) => delete c.picked);
   state.queue = cards;
   state.pos = 0;
   renderStudy();
+}
+
+function studyScoreText() {
+  const known = state.cards.filter((c) => c.status === "known").length;
+  const learning = state.cards.filter((c) => c.status === "learning").length;
+  return `${known} known · ${learning} to review`;
 }
 
 function renderStudy() {
@@ -143,7 +216,7 @@ function renderStudy() {
 
   const known = state.cards.filter((c) => c.status === "known").length;
   const learning = state.cards.filter((c) => c.status === "learning").length;
-  els.studyScore.textContent = `${known} known · ${learning} to review`;
+  els.studyScore.textContent = studyScoreText();
 
   if (done) {
     els.studyPos.textContent = "Session complete";
@@ -165,11 +238,15 @@ function renderStudy() {
 
   els.studyPos.textContent = `Card ${pos + 1} / ${queue.length}`;
   const card = queue[pos];
+  const quiz = Boolean(card.options);
+  $("hitBtn").hidden = quiz;
+  $("missBtn").hidden = quiz;
+  els.keys.textContent = quiz ? "pick an answer · arrow keys move" : "space flips · arrow keys move · 1 / 2 grade the card";
   els.studyCard.replaceChildren(buildCard(card, state.cards.indexOf(card)));
 }
 
 function grade(status) {
-  if (state.pos >= state.queue.length) return;
+  if (state.pos >= state.queue.length || state.queue[state.pos].options) return;
   state.queue[state.pos].status = status;
   state.pos += 1;
   renderStudy();
@@ -239,13 +316,12 @@ async function generate(event) {
       return;
     }
 
-    state.cards = data.flashcards.map((c) => ({
-      question: String(c.question),
-      answer: String(c.answer),
-      hint: typeof c.hint === "string" ? c.hint : "",
-    }));
+    state.cards = data.flashcards.map(normCard);
     const firstLine = raw.split("\n")[0].trim();
-    state.title = upload.name && raw === upload.text.trim() ? `File: ${upload.name.slice(0, 44)}` : isNotes ? `Notes: ${firstLine.slice(0, 32)}${firstLine.length > 32 ? "…" : ""}` : firstLine.slice(0, 56);
+    const usedFiles = files.filter((f) => raw.includes(f.segment.slice(0, 80)));
+    state.title = usedFiles.length === 1 && raw.length < usedFiles[0].segment.length + 40
+      ? `File: ${usedFiles[0].name.slice(0, 44)}`
+      : usedFiles.length > 1 ? `${usedFiles.length} files: ${usedFiles[0].name.slice(0, 28)}…` : isNotes ? `Notes: ${firstLine.slice(0, 32)}${firstLine.length > 32 ? "…" : ""}` : firstLine.slice(0, 56);
     render();
 
     if (data.warning) {
@@ -282,11 +358,14 @@ function flipAll() {
   });
 }
 
-const plainCards = () => state.cards.map(({ question, answer, hint }) => ({ question, answer, hint }));
+const plainCards = () => state.cards.map(({ question, answer, hint, type, options, correct }) => ({
+  question, answer, hint, ...(options ? { type, options, correct } : {}),
+}));
+const optionLines = (c) => (c.options || []).map((o, i) => `${String.fromCharCode(65 + i)}) ${o}`);
 
 function exportCsv() {
   const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
-  const rows = [["question", "answer", "hint"], ...plainCards().map((c) => [c.question, c.answer, c.hint])];
+  const rows = [["question", "answer", "hint", "options"], ...plainCards().map((c) => [c.question, c.answer, c.hint, optionLines(c).join(" | ")])];
   download(`${slug(state.title)}.csv`, "text/csv;charset=utf-8", `﻿${rows.map((r) => r.map(esc).join(",")).join("\r\n")}`);
 }
 
@@ -295,7 +374,7 @@ function exportJson() {
 }
 
 async function copyDeck() {
-  const text = plainCards().map((c, i) => `${i + 1}. Q: ${c.question}\n   A: ${c.answer}`).join("\n\n");
+  const text = plainCards().map((c, i) => `${i + 1}. Q: ${c.question}\n${optionLines(c).map((l) => `   ${l}\n`).join("")}   A: ${c.answer}`).join("\n\n");
   try {
     await navigator.clipboard.writeText(text);
     toast("Copied to clipboard");
@@ -317,7 +396,7 @@ function loadDecks() {
         createdAt: Number(d.createdAt) || Date.now(),
         cards: d.cards
           .filter((c) => c && typeof c.question === "string" && typeof c.answer === "string")
-          .map((c) => ({ question: c.question, answer: c.answer, hint: typeof c.hint === "string" ? c.hint : "" })),
+          .map(normCard),
       }));
   } catch {
     return [];
@@ -380,6 +459,10 @@ async function checkHealth() {
   try {
     const response = await fetch(`${API_URL}/api/health`);
     const data = await response.json();
+    if (Number.isInteger(data.max_chars) && data.max_chars > 0) {
+      els.input.maxLength = data.max_chars;
+      updateCount();
+    }
     if (data.huggingface) {
       els.modelBadge.dataset.state = "online";
       els.modelText.textContent = String(data.model || "online").split("/").pop();
@@ -398,6 +481,8 @@ const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_PDF_PAGES = 30;
 const MAX_OCR_PAGES = 5;
 const MIN_PDF_TEXT = 80;
+const MAX_FILES = 8;
+const MIN_ROOM = 200;
 const LIBS = {
   pdf: {
     url: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
@@ -409,7 +494,8 @@ const LIBS = {
     sri: "sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F",
   },
 };
-const upload = { name: "", text: "", token: 0 };
+const upload = { token: 0 };
+const files = [];
 const loaded = {};
 
 function loadLib(key) {
@@ -443,7 +529,7 @@ async function ocrImages(sources, progress) {
   }
 }
 
-async function readPdf(file, progress) {
+async function readPdf(file, progress, room) {
   await loadLib("pdf");
   const pdfjs = window.pdfjsLib;
   pdfjs.GlobalWorkerOptions.workerSrc = LIBS.pdf.worker;
@@ -451,12 +537,14 @@ async function readPdf(file, progress) {
   try {
     const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
     let text = "";
-    for (let i = 1; i <= pages; i++) {
+    let read = 0;
+    for (let i = 1; i <= pages && text.length < room; i++) {
       progress(`Reading page ${i} / ${pages}`);
       const content = await (await doc.getPage(i)).getTextContent();
       text += `${content.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join("")}\n\n`;
+      read = i;
     }
-    if (text.replace(/\s/g, "").length >= MIN_PDF_TEXT) return { text, note: doc.numPages > pages ? `first ${pages} of ${doc.numPages} pages` : "" };
+    if (text.replace(/\s/g, "").length >= MIN_PDF_TEXT) return { text, note: doc.numPages > read ? `first ${read} of ${doc.numPages} pages` : "" };
 
     const ocrPages = Math.min(doc.numPages, MAX_OCR_PAGES);
     const canvases = [];
@@ -485,51 +573,65 @@ function tidyText(text) {
   return text.replace(/\r/g, "").replace(/[ \t ]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function clearUpload() {
-  upload.token += 1;
-  upload.name = "";
-  upload.text = "";
-  els.fileChip.hidden = true;
-  els.file.value = "";
-  els.drop.classList.remove("busy");
-  els.submit.disabled = false;
+async function readFile(file, progress, room) {
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  return isPdf ? readPdf(file, progress, room) : readImage(file, progress);
 }
 
-async function handleFile(file) {
-  if (!file) return;
+async function addFile(file, progress) {
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
   const isImage = /^image\/(png|jpe?g|webp|bmp)$/.test(file.type);
-  if (!isPdf && !isImage) return setStatus("Please choose a PDF or a PNG, JPG, WebP or BMP photo.", "error");
-  if (file.size > MAX_FILE_BYTES) return setStatus("That file is over 15 MB. Try a smaller one.", "error");
+  if (!isPdf && !isImage) return { ok: false, msg: `${file.name}: not a PDF or a PNG, JPG, WebP or BMP photo.` };
+  if (file.size > MAX_FILE_BYTES) return { ok: false, msg: `${file.name}: over 15 MB.` };
+  if (files.length >= MAX_FILES) return { ok: false, msg: `Up to ${MAX_FILES} files at a time. Remove one first.` };
 
+  const max = els.input.maxLength;
+  const used = els.input.value.length;
+  const room = max - used - (used ? 2 : 0);
+  if (room < MIN_ROOM) return { ok: false, msg: `${file.name}: the box is full (${max.toLocaleString()} characters). Remove a file or some text first.` };
+
+  const { text, note } = await readFile(file, progress, room);
+  let clean = tidyText(text);
+  if (clean.replace(/\s/g, "").length < 20) return { ok: false, msg: `${file.name}: no readable text. Try a sharper photo or a text-based PDF.` };
+  const cut = clean.length > room;
+  if (cut) clean = clean.slice(0, room).replace(/\s+\S*$/, "");
+
+  els.input.value = used ? `${els.input.value}\n\n${clean}` : clean;
+  updateCount();
+  files.push({ id: `${Date.now()}-${files.length}`, name: file.name, segment: clean, note, cut });
+  renderFiles();
+  return { ok: true, cut };
+}
+
+async function handleFiles(list) {
+  const queue = [...list];
+  if (!queue.length) return;
   const token = ++upload.token;
   els.drop.classList.add("busy");
   els.submit.disabled = true;
-  els.fileChip.hidden = true;
   const progress = (msg) => { if (token === upload.token) setStatus(msg); };
 
+  let added = 0;
+  let trimmed = false;
+  const problems = [];
   try {
-    const { text, note } = isPdf ? await readPdf(file, progress) : await readImage(file, progress);
-    if (token !== upload.token) return;
-    let clean = tidyText(text);
-    if (clean.replace(/\s/g, "").length < 20) {
-      setStatus("No readable text found in that file. Try a sharper photo or a text-based PDF.", "error");
-      return;
+    for (const [n, file] of queue.entries()) {
+      if (token !== upload.token) return;
+      const prefix = queue.length > 1 ? `File ${n + 1} / ${queue.length}: ` : "";
+      try {
+        const result = await addFile(file, (msg) => progress(prefix + msg));
+        if (token !== upload.token) return;
+        if (result.ok) { added += 1; trimmed ||= result.cut; } else problems.push(result.msg);
+      } catch (error) {
+        console.error("File read failed:", error);
+        problems.push(`${file.name}: ${error.message || "could not be read"}`);
+      }
     }
-    const max = els.input.maxLength;
-    const cut = clean.length > max;
-    if (cut) clean = clean.slice(0, max);
-
-    els.input.value = clean;
-    els.input.dispatchEvent(new Event("input"));
-    upload.name = file.name;
-    upload.text = clean;
-    els.fileName.textContent = `${file.name} · ${clean.length} chars${note ? ` · ${note}` : ""}`;
-    els.fileChip.hidden = false;
-    setStatus(cut ? `Text extracted and trimmed to ${max} characters. Edit it if you like, then generate.` : "Text extracted. Edit it if you like, then generate.", "ok");
-  } catch (error) {
-    console.error("File read failed:", error);
-    if (token === upload.token) setStatus(`Could not read that file: ${error.message || "unknown error"}`, "error");
+    if (token !== upload.token) return;
+    const parts = [];
+    if (added) parts.push(`Added ${added} file${added > 1 ? "s" : ""}${trimmed ? " (the last one was trimmed to fit)" : ""}. Edit the text if you like, then generate.`);
+    parts.push(...problems);
+    setStatus(parts.join(" "), problems.length && !added ? "error" : "ok");
   } finally {
     if (token === upload.token) {
       els.drop.classList.remove("busy");
@@ -537,6 +639,45 @@ async function handleFile(file) {
       els.file.value = "";
     }
   }
+}
+
+function removeFile(id) {
+  const index = files.findIndex((f) => f.id === id);
+  if (index === -1) return;
+  const [gone] = files.splice(index, 1);
+  const value = els.input.value;
+  const at = value.indexOf(gone.segment);
+  if (at === -1) toast("That text was edited, so it stays in the box");
+  else {
+    els.input.value = (value.slice(0, at) + value.slice(at + gone.segment.length)).replace(/\n{3,}/g, "\n\n").trim();
+    updateCount();
+  }
+  renderFiles();
+}
+
+function renderFiles() {
+  els.fileList.hidden = files.length === 0;
+  if (!files.length) return els.fileList.replaceChildren();
+  const rows = files.map((f) => h("div", { class: "file" },
+    h("div", { class: "file-meta" },
+      h("strong", { text: f.name }),
+      h("small", { text: `${f.segment.length.toLocaleString()} chars${f.note ? ` · ${f.note}` : ""}${f.cut ? " · trimmed" : ""}` }),
+    ),
+    h("button", { type: "button", "aria-label": `Remove ${f.name}`, text: "×", onclick: () => removeFile(f.id) }),
+  ));
+  els.fileList.replaceChildren(...rows, h("button", { type: "button", class: "files-clear", text: "clear files and text", onclick: clearAll }));
+}
+
+function clearAll() {
+  upload.token += 1;
+  files.length = 0;
+  els.input.value = "";
+  updateCount();
+  renderFiles();
+  els.drop.classList.remove("busy");
+  els.submit.disabled = false;
+  els.file.value = "";
+  setStatus("");
 }
 
 // ---------- wiring ----------
@@ -551,8 +692,15 @@ EXAMPLES.forEach((topic) => {
   }));
 });
 
-els.input.addEventListener("input", () => {
-  els.charCount.textContent = `${els.input.value.length} / ${els.input.maxLength}`;
+function updateCount() {
+  const { value, maxLength } = els.input;
+  els.charCount.textContent = `${value.length.toLocaleString()} / ${maxLength.toLocaleString()}`;
+  els.charCount.classList.toggle("warn", value.length >= maxLength * 0.9);
+}
+els.input.addEventListener("input", updateCount);
+els.input.addEventListener("paste", (e) => {
+  const pasted = [...(e.clipboardData?.files || [])];
+  if (pasted.length) { e.preventDefault(); handleFiles(pasted); }
 });
 els.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) els.form.requestSubmit();
@@ -560,11 +708,10 @@ els.input.addEventListener("keydown", (e) => {
 els.count.addEventListener("input", () => { els.countOut.textContent = els.count.value; });
 els.form.addEventListener("submit", generate);
 
-els.file.addEventListener("change", () => handleFile(els.file.files[0]));
-$("fileClear").addEventListener("click", () => { clearUpload(); setStatus(""); });
+els.file.addEventListener("change", () => handleFiles(els.file.files));
 ["dragenter", "dragover"].forEach((t) => els.drop.addEventListener(t, (e) => { e.preventDefault(); els.drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((t) => els.drop.addEventListener(t, () => els.drop.classList.remove("over")));
-els.drop.addEventListener("drop", (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
+els.drop.addEventListener("drop", (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); });
 ["dragover", "drop"].forEach((t) => window.addEventListener(t, (e) => e.preventDefault()));
 
 document.querySelectorAll('input[name="view"]').forEach((r) =>
@@ -596,7 +743,7 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "2") grade("known");
   else if (e.key === " " && e.target === document.body) {
     e.preventDefault();
-    const card = els.studyCard.querySelector(".card");
+    const card = els.studyCard.querySelector(".card:not(.quiz)");
     if (card) toggleFlip(card);
   }
 });
