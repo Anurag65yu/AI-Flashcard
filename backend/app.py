@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
@@ -54,7 +55,7 @@ LOG_MODEL_OUTPUT = os.getenv("LOG_MODEL_OUTPUT", "0") == "1"  # off by default: 
 
 DEFAULT_CARDS = 5
 MAX_CARDS = 20
-MAX_INPUT_CHARS = 6000
+MAX_INPUT_CHARS = max(500, min(_env_int("MAX_INPUT_CHARS", 12000), 30000))  # keep within the provider's tokens-per-minute cap
 
 DIFFICULTIES = {
     "easy": "Beginner level: core facts and definitions only.",
@@ -68,7 +69,21 @@ STYLES = {
         "the answer is the missing term plus a few words of clarification."
     ),
     "definition": "Each question names a term or concept; the answer defines it clearly.",
-    "mixed": "A varied mix of question-and-answer, fill-in-the-blank (use ____) and definition cards.",
+    "mcq": (
+        "Multiple choice: every item also has \"options\" (exactly 4 short, plausible choices, only one correct) "
+        "and \"correct\" (the 0-based index of the right option). Set \"answer\" to the correct option followed "
+        "by a one-sentence explanation of why it is right."
+    ),
+    "truefalse": (
+        "True/false: each question is one clear statement. Every item also has \"options\" set to exactly "
+        "[\"True\", \"False\"] and \"correct\" (0 for True, 1 for False). Make roughly half of them false. "
+        "Set \"answer\" to True or False followed by a one-sentence explanation."
+    ),
+    "mixed": (
+        "A varied mix of question-and-answer, fill-in-the-blank (use ____), definition and multiple-choice cards. "
+        "Multiple-choice cards also have \"options\" (exactly 4 choices) and \"correct\" (0-based index of the right "
+        "option); other cards leave those two fields out."
+    ),
 }
 LANGUAGES = ["English", "Hindi", "Spanish", "French", "German", "Portuguese", "Japanese"]
 
@@ -85,7 +100,7 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fr
 
 # Serving the frontend from Flask means one command runs the whole app.
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
-app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # a 6000-char request is far below this
+app.config["MAX_CONTENT_LENGTH"] = 160 * 1024  # a max-length request, even all escaped non-latin text, stays below this
 if PROXY_HOPS:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=PROXY_HOPS, x_proto=PROXY_HOPS, x_host=PROXY_HOPS)
 if CORS_ORIGINS:  # same-origin by default; only open the API to origins you list
@@ -195,6 +210,7 @@ def server_error(_):
 SYSTEM_PROMPT = (
     "You write concise study flashcards. Reply with ONLY a JSON array, no prose and "
     'no code fences. Each item must be an object: {"question": "...", "answer": "...", "hint": "..."}. '
+    "Some card styles add \"options\" and \"correct\" fields, described in the request. "
     "Questions must be self-contained. Answers must be 1-2 short sentences. "
     "The hint is a short nudge of at most 8 words that does not reveal the answer."
 )
@@ -261,19 +277,45 @@ def query_llm(user_prompt, timeout=60):
         return None, "The AI service returned an unexpected response."
 
 
+def _clean_options(item):
+    """Return (options, correct_index) for a valid multiple-choice item, else (None, None)."""
+    options, correct = item.get("options"), item.get("correct")
+    if not isinstance(options, list) or isinstance(correct, bool) or not isinstance(correct, int):
+        return None, None
+    options = [o.strip()[:160] if isinstance(o, str) else str(o).strip()[:160] for o in options[:6]]
+    if len(options) < 2 or not all(options) or len(set(o.lower() for o in options)) != len(options):
+        return None, None
+    if not 0 <= correct < len(options):
+        return None, None
+    return options, correct
+
+
 def _clean_card(item):
     if not isinstance(item, dict):
         return None
     q = item.get("question")
-    a = item.get("answer")
-    if not isinstance(q, str) or not isinstance(a, str):
+    if not isinstance(q, str) or not q.strip():
         return None
-    q, a = q.strip(), a.strip()
-    if not q or not a:
+    options, correct = _clean_options(item)
+    a = item.get("answer")
+    a = a.strip() if isinstance(a, str) else ""
+    if options and not a:
+        a = options[correct]
+    if not a:
         return None
     hint = item.get("hint")
     hint = hint.strip()[:160] if isinstance(hint, str) else ""
-    return {"question": q[:300], "answer": a[:800], "hint": hint}
+    card = {"question": q.strip()[:300], "answer": a[:800], "hint": hint}
+    if options:
+        is_tf = [o.lower() for o in options] == ["true", "false"]
+        if not is_tf:  # models like to put the right option in the same slot; true/false keeps its natural order
+            right = options[correct]
+            random.shuffle(options)
+            correct = options.index(right)
+        if not a.lower().startswith(options[correct].lower()):
+            card["answer"] = f"{options[correct]}. {a}"[:800]
+        card.update(type="tf" if is_tf else "mcq", options=options, correct=correct)
+    return card
 
 
 def build_prompt(num_cards, source, is_notes, difficulty, style, language):
@@ -367,7 +409,7 @@ def index():
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"ok": True, "huggingface": bool(HF_API_KEY), "model": HF_MODEL, "provider": PROVIDER_HOST})
+    return jsonify({"ok": True, "huggingface": bool(HF_API_KEY), "model": HF_MODEL, "provider": PROVIDER_HOST, "max_chars": MAX_INPUT_CHARS})
 
 
 @app.route("/api/flashcards", methods=["POST"])
