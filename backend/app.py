@@ -33,6 +33,7 @@ HF_API_KEY = _clean_key(os.getenv("HF_API_KEY"))
 HF_MODEL = _clean(os.getenv("HF_MODEL")) or "meta-llama/Llama-3.1-8B-Instruct"
 HF_URL = _clean(os.getenv("HF_URL")) or "https://router.huggingface.co/v1/chat/completions"
 PROVIDER_HOST = urlparse(HF_URL).netloc
+SHOW_UPSTREAM_ERROR = os.getenv("SHOW_UPSTREAM_ERROR", "0") == "1"  # debugging only: shows the provider's error text to visitors
 
 
 def _env_int(name, default):
@@ -212,6 +213,17 @@ def upstream_message(status):
     return "The AI service is unavailable right now."
 
 
+def _upstream_detail(resp):
+    """The provider's own error text, trimmed. Only used when SHOW_UPSTREAM_ERROR=1."""
+    try:
+        body = resp.json()
+        err = body.get("error", body) if isinstance(body, dict) else body
+        text = err.get("message") if isinstance(err, dict) else str(err)
+    except ValueError:
+        text = resp.text
+    return " ".join(str(text or "").split())[:300]
+
+
 def query_llm(user_prompt, timeout=60):
     """Call the OpenAI-compatible chat-completions endpoint. Returns (text, error)."""
     if not HF_API_KEY:
@@ -237,7 +249,10 @@ def query_llm(user_prompt, timeout=60):
 
     if resp.status_code != 200:
         logger.error("AI provider %s (model %s) returned %s: %s", PROVIDER_HOST, HF_MODEL, resp.status_code, resp.text[:500])
-        return None, upstream_message(resp.status_code)
+        message = upstream_message(resp.status_code)
+        if SHOW_UPSTREAM_ERROR:
+            message = f"[{PROVIDER_HOST} {resp.status_code}] {_upstream_detail(resp)}"
+        return None, message
 
     try:
         return resp.json()["choices"][0]["message"]["content"], None
